@@ -25,6 +25,7 @@ export function Dashboard(): JSX.Element {
   const times = useDashboardStore((s) => s.times);
   const atendimentos = useDashboardStore((s) => s.atendimentos);
   const historico = useDashboardStore((s) => s.historico);
+  const atualizarAtendimento = useDashboardStore((s) => s.atualizarAtendimento);
 
   const kpis = useMemo(() => calcularKpis(atendimentos), [atendimentos]);
   const metricasPorTime = useMemo(
@@ -101,7 +102,16 @@ export function Dashboard(): JSX.Element {
                   <span className="truncate text-slate-300">{a.clienteNome ?? a.clienteId}</span>
                   <button
                     type="button"
-                    onClick={() => void api.finalizar(a.id)}
+                    onClick={() =>
+                      void (async () => {
+                        try {
+                          const atendimentoFinalizado = await api.finalizar(a.id);
+                          atualizarAtendimento(atendimentoFinalizado);
+                        } catch {
+                          // A interface já reage ao evento de tempo real quando disponível.
+                        }
+                      })()
+                    }
                     className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-200 transition hover:bg-rose-500"
                   >
                     Finalizar

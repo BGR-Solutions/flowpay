@@ -40,6 +40,10 @@ export interface DashboardState {
    * @param atendimentos - Lista de atendimentos.
    */
   setAtendimentos: (atendimentos: AtendimentoDTO[]) => void;
+  /** Atualiza ou insere um atendimento no mapa global.
+   * @param atendimento - Atendimento a persistir no estado.
+   */
+  atualizarAtendimento: (atendimento: AtendimentoDTO) => void;
   /**
    * Aplica um evento de tempo real ao estado.
    * @param evento - Evento recebido do WebSocket.
@@ -62,6 +66,15 @@ function pontoAtual(atendimentos: Record<string, AtendimentoDTO>): PontoHistoric
   };
 }
 
+function inserirOuAtualizarAtendimento(
+  estado: DashboardState,
+  atendimento: AtendimentoDTO,
+): Pick<DashboardState, 'atendimentos' | 'historico'> {
+  const atendimentos = { ...estado.atendimentos, [atendimento.id]: atendimento };
+  const historico = [...estado.historico, pontoAtual(atendimentos)].slice(-MAX_HISTORICO);
+  return { atendimentos, historico };
+}
+
 /**
  * Hook de acesso ao store do dashboard.
  */
@@ -80,6 +93,9 @@ export const useDashboardStore = create<DashboardState>((set) => ({
       return { atendimentos: mapa };
     }),
 
+  atualizarAtendimento: (atendimento) =>
+    set((estado) => inserirOuAtualizarAtendimento(estado, atendimento)),
+
   aplicarEvento: (evento) =>
     set((estado) => {
       switch (evento.tipo) {
@@ -91,11 +107,8 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         case 'ATENDIMENTO_CRIADO':
         case 'ATENDIMENTO_ALOCADO':
         case 'ATENDIMENTO_ENFILEIRADO':
-        case 'ATENDIMENTO_FINALIZADO': {
-          const atendimentos = { ...estado.atendimentos, [evento.payload.id]: evento.payload };
-          const historico = [...estado.historico, pontoAtual(atendimentos)].slice(-MAX_HISTORICO);
-          return { atendimentos, historico };
-        }
+        case 'ATENDIMENTO_FINALIZADO':
+          return inserirOuAtualizarAtendimento(estado, evento.payload);
         default:
           return {};
       }

@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      PORT: 3333
+      HOST: 0.0.0.0
+      CORS_ORIGIN: '*'
+      # Habilita o simulador para manter o dashboard "vivo" na demonstração.
+      SIMULADOR: 'true'
+    ports:
+      - '3333:3333'
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - '8080:80'
+    depends_on:
+      - api

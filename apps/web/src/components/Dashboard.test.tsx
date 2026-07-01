@@ -69,6 +69,20 @@ describe('Dashboard', () => {
       criadoEm: new Date().toISOString(),
       finalizadoEm: new Date().toISOString(),
     });
+    vi.spyOn(api, 'listarTimes').mockResolvedValue([]);
+    vi.spyOn(api, 'listarAtendimentos').mockResolvedValue([
+      {
+        id: 'atendimento-1',
+        clienteId: 'cli-1',
+        clienteNome: 'Maria',
+        canal: 'API',
+        assunto: 'PROBLEMA_CARTAO',
+        timeId: 'time-1',
+        status: 'FINALIZADO',
+        criadoEm: new Date().toISOString(),
+        finalizadoEm: new Date().toISOString(),
+      },
+    ]);
 
     render(<Dashboard />);
     fireEvent.click(screen.getByRole('button', { name: /finalizar/i }));

@@ -26,6 +26,8 @@ export function Dashboard(): JSX.Element {
   const atendimentos = useDashboardStore((s) => s.atendimentos);
   const historico = useDashboardStore((s) => s.historico);
   const atualizarAtendimento = useDashboardStore((s) => s.atualizarAtendimento);
+  const setTimes = useDashboardStore((s) => s.setTimes);
+  const setAtendimentos = useDashboardStore((s) => s.setAtendimentos);
 
   const kpis = useMemo(() => calcularKpis(atendimentos), [atendimentos]);
   const metricasPorTime = useMemo(
@@ -106,6 +108,12 @@ export function Dashboard(): JSX.Element {
                       void (async () => {
                         try {
                           const atendimentoFinalizado = await api.finalizar(a.id);
+                          const [timesAtualizados, atendimentosAtualizados] = await Promise.all([
+                            api.listarTimes(),
+                            api.listarAtendimentos(),
+                          ]);
+                          setTimes(timesAtualizados);
+                          setAtendimentos(atendimentosAtualizados);
                           atualizarAtendimento(atendimentoFinalizado);
                         } catch {
                           // A interface já reage ao evento de tempo real quando disponível.

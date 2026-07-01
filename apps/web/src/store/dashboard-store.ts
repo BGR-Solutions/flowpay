@@ -30,6 +30,8 @@ export interface DashboardState {
   atendimentos: Record<string, AtendimentoDTO>;
   /** Série temporal para o gráfico de throughput. */
   historico: PontoHistorico[];
+  /** Momento da última sincronização ou atualização recebida. */
+  ultimaAtualizacao: Date | null;
 
   /** Define o estado de conexão. @param valor - Conectado ou não. */
   setConectado: (valor: boolean) => void;
@@ -83,18 +85,19 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   times: [],
   atendimentos: {},
   historico: [],
+  ultimaAtualizacao: null,
 
   setConectado: (valor) => set({ conectado: valor }),
-  setTimes: (times) => set({ times }),
+  setTimes: (times) => set({ times, ultimaAtualizacao: new Date() }),
   setAtendimentos: (atendimentos) =>
     set(() => {
       const mapa: Record<string, AtendimentoDTO> = {};
       for (const a of atendimentos) mapa[a.id] = a;
-      return { atendimentos: mapa };
+      return { atendimentos: mapa, ultimaAtualizacao: new Date() };
     }),
 
   atualizarAtendimento: (atendimento) =>
-    set((estado) => inserirOuAtualizarAtendimento(estado, atendimento)),
+    set((estado) => ({ ...inserirOuAtualizarAtendimento(estado, atendimento), ultimaAtualizacao: new Date() })),
 
   aplicarEvento: (evento) =>
     set((estado) => {
@@ -102,7 +105,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         case 'SNAPSHOT': {
           const mapa: Record<string, AtendimentoDTO> = {};
           for (const a of evento.payload.atendimentosAtivos) mapa[a.id] = a;
-          return { times: evento.payload.times, atendimentos: mapa };
+          return { times: evento.payload.times, atendimentos: mapa, ultimaAtualizacao: new Date() };
         }
         case 'ATENDIMENTO_CRIADO':
         case 'ATENDIMENTO_ALOCADO':

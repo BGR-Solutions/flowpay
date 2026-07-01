@@ -24,7 +24,8 @@ function urlWebSocket(): string {
 export function useRealtime(): void {
   const setConectado = useDashboardStore((s) => s.setConectado);
   const aplicarEvento = useDashboardStore((s) => s.aplicarEvento);
-  const sincronizarEstado = useDashboardStore((s) => s.sincronizarEstado);
+  const setTimes = useDashboardStore((s) => s.setTimes);
+  const setAtendimentos = useDashboardStore((s) => s.setAtendimentos);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -33,8 +34,9 @@ export function useRealtime(): void {
 
     const sincronizar = async () => {
       try {
-        const [atendimentos, times] = await Promise.all([api.listarAtendimentos(), api.listarTimes()]);
-        sincronizarEstado(times, atendimentos);
+        const [times, atendimentos] = await Promise.all([api.listarTimes(), api.listarAtendimentos()]);
+        setTimes(times);
+        setAtendimentos(atendimentos);
         setConectado(true);
       } catch {
         // A sincronização periódica é um fallback e não derruba a tela.
@@ -71,5 +73,5 @@ export function useRealtime(): void {
       window.clearInterval(intervalo);
       socket?.close();
     };
-  }, [aplicarEvento, setConectado, sincronizarEstado]);
+  }, [aplicarEvento, setConectado, setTimes, setAtendimentos]);
 }

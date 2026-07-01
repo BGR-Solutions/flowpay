@@ -19,9 +19,17 @@ const BASE = '/api';
  * @throws {Error} se a resposta não for bem-sucedida.
  */
 async function requisitar<T>(caminho: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+
+  if (init?.body === undefined) {
+    headers.delete('content-type');
+  } else if (!headers.has('content-type')) {
+    headers.set('content-type', 'application/json');
+  }
+
   const resposta = await fetch(`${BASE}${caminho}`, {
-    headers: { 'content-type': 'application/json' },
     ...init,
+    headers,
   });
   if (!resposta.ok) {
     const corpo = await resposta.json().catch(() => ({}));

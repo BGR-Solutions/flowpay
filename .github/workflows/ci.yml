@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    name: Lint, typecheck e testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build do pacote compartilhado
+        run: npm run build --workspace @flowpay/shared
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Testes
+        run: npm run test
+
+      - name: Build (api + web)
+        run: |
+          npm run build --workspace @flowpay/api
+          npm run build --workspace @flowpay/web

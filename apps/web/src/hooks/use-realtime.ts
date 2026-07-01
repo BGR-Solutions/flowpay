@@ -1,5 +1,6 @@
 import type { EventoTempoReal } from '@flowpay/shared';
 import { useEffect } from 'react';
+import { api } from '../api/client.js';
 import { useDashboardStore } from '../store/dashboard-store.js';
 
 /**
@@ -23,11 +24,22 @@ function urlWebSocket(): string {
 export function useRealtime(): void {
   const setConectado = useDashboardStore((s) => s.setConectado);
   const aplicarEvento = useDashboardStore((s) => s.aplicarEvento);
+  const sincronizarEstado = useDashboardStore((s) => s.sincronizarEstado);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
     let reconectar: ReturnType<typeof setTimeout> | undefined;
     let ativo = true;
+
+    const sincronizar = async () => {
+      try {
+        const [atendimentos, times] = await Promise.all([api.listarAtendimentos(), api.listarTimes()]);
+        sincronizarEstado(times, atendimentos);
+        setConectado(true);
+      } catch {
+        // A sincronização periódica é um fallback e não derruba a tela.
+      }
+    };
 
     const conectar = () => {
       socket = new WebSocket(urlWebSocket());
@@ -47,12 +59,17 @@ export function useRealtime(): void {
       socket.onerror = () => socket?.close();
     };
 
+    void sincronizar();
+    const intervalo = window.setInterval(() => {
+      void sincronizar();
+    }, 10000);
     conectar();
 
     return () => {
       ativo = false;
       if (reconectar) clearTimeout(reconectar);
+      window.clearInterval(intervalo);
       socket?.close();
     };
-  }, [setConectado, aplicarEvento]);
+  }, [aplicarEvento, setConectado, sincronizarEstado]);
 }

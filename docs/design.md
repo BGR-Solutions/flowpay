@@ -1,7 +1,7 @@
 # FlowPay — Distribuição e Monitoramento de Atendimentos
 ## Documento de Design Técnico (Back-end Node.js + Front-end React)
 
-> Escopo desta versão: **design completo**, com o WhatsApp modelado como um **adaptador de canal plugável** (interface abstrata + mock), sem depender da Meta agora. Para cada decisão há a **justificativa** de por que é a melhor forma de implementar.
+> Escopo desta versão: **design completo**, com o WhatsApp modelado como um **adaptador de canal plugável** (interface abstrata + mock), sem depender da Meta agora. Para cada decisão há uma **justificativa** de por que é a melhor forma de implementar.
 
 ---
 
@@ -9,25 +9,25 @@
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  FRONT-END — Dashboard (React + TypeScript)                    │
-│  KPIs · filas por time · carga por atendente · tempo real      │
+│  FRONT-END — Dashboard (React + TypeScript)                   │
+│  KPIs · filas por time · carga por atendente · tempo real     │
 └───────────────┬───────────────────────────────────────────────┘
                 │ REST (comandos/consultas) + WebSocket (push)
 ┌───────────────┴───────────────────────────────────────────────┐
-│  BACK-END (Node.js + TypeScript)                               │
-│                                                                │
-│  Interface (HTTP/WS)                                           │
-│    ├─ REST Controllers        └─ WS Gateway (broadcast)        │
-│  Application (Casos de uso)                                    │
+│  BACK-END (Node.js + TypeScript)                              │
+│                                                               │
+│  Interface (HTTP/WS)                                          │
+│    ├─ REST Controllers        └─ WS Gateway (broadcast)       │
+│  Application (Casos de uso)                                   │
 │    ├─ CriarAtendimento  ├─ FinalizarAtendimento               │
 │    ├─ ResponderMensagem ├─ ConsultarDashboard                 │
-│  Domain (núcleo puro, sem framework)  ◄── coração do desafio   │
+│  Domain (núcleo puro, sem framework)  ◄── coração do desafio  │
 │    ├─ Motor de Distribuição (fila + capacidade=3)             │
 │    ├─ Entidades: Time, Atendente, Atendimento, Mensagem       │
-│    └─ Regras/invariantes                                       │
-│  Infra (adaptadores)                                           │
+│    └─ Regras/Constantes                                      │
+│  Infra (adaptadores)                                          │
 │    ├─ Repositórios (in-memory | Postgres)                     │
-│    ├─ Event Bus (broadcast p/ WS)                            │
+│    ├─ Event Bus (broadcast p/ WS)                             │
 │    └─ CANAIS: ChannelPort  ──► WhatsAppMockAdapter            │
 │                             └► WhatsAppCloudAdapter (futuro)  │
 └───────────────────────────────────────────────────────────────┘
@@ -38,19 +38,18 @@
 **Decisão:** isolar o *Domain* (motor de distribuição + entidades) de qualquer framework, banco ou canal. Frameworks (Express/Fastify), banco (Postgres) e canais (WhatsApp) são **detalhes plugáveis** nas bordas.
 
 **Justificativa:**
-- O que prova senioridade neste desafio é o **algoritmo de distribuição** (capacidade, fila, concorrência). Mantê-lo puro (sem `req`/`res`, sem SQL) o torna **100% testável por unidade**, sem subir servidor nem banco.
-- O requisito de WhatsApp pede explicitamente **pluggability**: com uma *porta* `ChannelPort`, trocar mock → Cloud API é adicionar uma classe, sem tocar no núcleo. Isso é o **Dependency Inversion Principle** aplicado ao problema real.
-- Reduz o risco de "vazamento" de regra de negócio para dentro de controllers — um erro comum que dificulta testes e manutenção.
-
-**Alternativa descartada:** MVC "gordo" (regra dentro do controller). Mais rápido de escrever no dia 1, mas acopla distribuição ao HTTP e ao WhatsApp, inviabilizando testes isolados e a troca de canal — exatamente o que o desafio valoriza.
+- O coração deste desafio é o **algoritmo de distribuição** (capacidade, fila, concorrência). Mantê-lo puro (sem `req`/`res`, sem SQL) o torna **100% testável por unidade**, sem subir servidor nem banco.
+- Sabendo da utilização do WhatsApp por parte da empresa, optei por deixar algo preparado para ser mais aderente ao desafio proposto, mantendo **pluggability**: com uma *porta* `ChannelPort`, podendo trocar o mock por uma API Cloud bastando adicionar uma classe, sem tocar no núcleo.
+- Reduz o risco de "vazamento" de regra de negócio para dentro de controllers — o que ocorreria em projetos MVC ou até mesmo um micrcoserviço como back-end, o que dificultaria testes e manutenção.
 
 ---
 
 ## 2. Modelo de domínio
 
-### 2.1 Entidades e invariantes
+### 2.1 Entidades e Constantes
 
 ```ts
+// Tipos criados em lista, mas poderiam vir de um cadastro em banco, de acordo com a necessidade de crescimento da aplicação ou até ser mantidos em lista para evitar consultas a banco e no carregamento das telas. Tudo depende da necessidade do negócio. Aqui a escolha foi por praticidade e velocidade de processamento.
 type TipoTime = 'CARTOES' | 'EMPRESTIMOS' | 'OUTROS';
 type Assunto  = 'PROBLEMA_CARTAO' | 'CONTRATACAO_EMPRESTIMO' | 'OUTRO';
 type StatusAtendimento = 'AGUARDANDO' | 'EM_ATENDIMENTO' | 'FINALIZADO';
@@ -59,7 +58,7 @@ interface Atendente {
   id: string;
   nome: string;
   timeId: string;
-  capacidadeMax: number;      // = 3 (regra do desafio)
+  capacidadeMax: number;        // = 3 (regra do desafio)
   atendimentosAtivos: string[]; // ids; invariante: length <= capacidadeMax
 }
 
@@ -67,20 +66,20 @@ interface Time {
   id: string;
   tipo: TipoTime;
   atendentesIds: string[];
-  fila: string[];             // ids de Atendimento AGUARDANDO (FIFO)
+fila: string[];                 // ids de Atendimento AGUARDANDO (FIFO)
 }
 
 interface Atendimento {
   id: string;
-  clienteId: string;          // ex.: wa_id (telefone) ou id interno
-  canal: 'WHATSAPP' | 'API';  // origem
+  clienteId: string;            // ex.: wa_id (telefone) ou id interno
+  canal: 'WHATSAPP' | 'API';    // origem
   assunto: Assunto;
   status: StatusAtendimento;
   timeId: string;
   atendenteId?: string;
   criadoEm: Date;
-  iniciadoEm?: Date;          // p/ tempo de espera
-  finalizadoEm?: Date;        // p/ tempo de atendimento
+  iniciadoEm?: Date;            // p/ tempo de espera
+  finalizadoEm?: Date;          // p/ tempo de atendimento
 }
 
 interface Mensagem {
@@ -88,12 +87,12 @@ interface Mensagem {
   atendimentoId: string;
   direcao: 'IN' | 'OUT';
   texto: string;
-  externalId?: string;        // waMessageId (idempotência)
+  externalId?: string;          // waMessageId (idempotência)
   criadoEm: Date;
 }
 ```
 
-**Invariantes de negócio (garantidas no Domain):**
+**Constantes de negócio (garantidas no Domain):**
 1. `atendente.atendimentosAtivos.length <= 3` — **sempre**.
 2. Um `Atendimento` só está `EM_ATENDIMENTO` se tiver `atendenteId`.
 3. Ordem da `fila` é FIFO (justiça de atendimento).
@@ -113,7 +112,7 @@ function resolverTime(assunto: Assunto): TipoTime {
 }
 ```
 
-**Justificativa:** `OUTROS` como *default* garante que nenhuma solicitação fique órfã (requisito: "demais assuntos"). Mapa explícito (não string mágica espalhada) centraliza a regra num único ponto de mudança.
+**Justificativa:** `OUTROS` como *default* garante que nenhuma solicitação fique órfã (requisito: "demais assuntos"). Mapa explícito (sem busca por string espalhada) centraliza a regra num único ponto de mudança, facilitando a manutenção/evolução.
 
 ---
 
@@ -141,16 +140,18 @@ function resolverTime(assunto: Assunto): TipoTime {
 
 ### 3.2 Concorrência e atomicidade — ponto crítico
 
-**Problema:** "finalizar atendimento A" e "criar atendimento B" podem ocorrer quase simultâneos e disputar a **mesma vaga**, violando o limite de 3 (condição de corrida).
+**Problema:** "finalizar atendimento A" e "criar atendimento B" podem ocorrer quase simultâneos e disputar a **mesma vaga**, violando o limite de 3.
 
 **Decisão:** serializar todas as **operações de mutação do estado de um time** através de uma **fila de comandos sequencial por time** (um *actor*/mutex lógico por `timeId`).
 
 **Justificativa:**
-- Node.js é single-threaded no JS, mas os casos de uso são **assíncronos** (I/O de banco/canal): entre um `await` e outro, outro comando pode intercalar e ver estado obsoleto. Um `await repo.save()` no meio da alocação é suficiente para introduzir corrida. Portanto, **precisamos de exclusão mútua lógica**, mesmo em Node.
+- Node.js é single-threaded no JS, mas os casos de uso são **assíncronos** (I/O de banco/canal): entre um `await` e outro, outro comando pode intercalar. Um `await repo.save()` no meio da alocação é suficiente para introduzir a execução do comando. Portanto, **precisamos de exclusão mútua lógica**, mesmo em Node.
 - Serializar **por time** (e não global) preserva paralelismo entre times diferentes — throughput maior, sem sacrificar correção.
-- Um "actor por time" é mais simples de raciocinar e testar que locks distribuídos; e evolui naturalmente para Redis/lock distribuído se escalar horizontalmente.
+- Um "ator por time" é mais simples de raciocinar e testar que locks distribuídos e evolui naturalmente para Redis/lock distribuído se escalar horizontalmente.
 
 **Implementação sugerida:** cada time tem uma *promise chain* (`queue = queue.then(op)`) ou uma lib de mutex (`async-mutex`). Se um dia rodar em múltiplas instâncias, trocar por lock Redis (`Redlock`) — a *porta* já isola isso.
+
+**Possível evolução:** usar mensageria, tanto RabbitMQ ou Kafka, para persistência de filas e manter o Redis para armazenamento de estado e locks rápidos, usando soluções de ambientes escaláveis como o da GCP.
 
 ### 3.3 Estratégia de escolha do atendente
 
@@ -158,16 +159,18 @@ function resolverTime(assunto: Assunto): TipoTime {
 
 **Justificativa:** distribui carga de forma equilibrada (melhor experiência e métricas mais justas no Dashboard) e é determinística — facilita testes. Alternativas (round-robin, aleatório) são válidas, mas *least-loaded* aproveita melhor a capacidade e evita atendente "quente".
 
+**Possível evolução:** o critério de desempate pode ser por horário logado ou carga trabalhada, depende da necessidade do negócio.
+
 ### 3.4 Por que testar isso exaustivamente
 
 Casos de teste unitário do motor (sem HTTP/DB):
 - aloca quando há vaga; enfileira quando lotado;
-- ao finalizar, puxa o próximo da fila (FIFO respeitado);
-- roteamento correto por assunto, incl. fallback `OUTROS`;
+- ao finalizar, puxa o próximo da fila (respeitando FIFO);
+- roteamento correto por assunto, inclui fallback `OUTROS`;
 - limite de 3 nunca é ultrapassado sob N criações concorrentes;
 - cliente com atendimento ativo não gera duplicado.
 
-**Justificativa:** é a parte de maior risco e maior valor demonstrável; testes de unidade rápidos aqui valem mais que testes E2E lentos.
+**Justificativa:** é a parte de maior risco e maior valor demonstrável; testes unitários rápidos aqui valem mais que testes E2E lentos.
 
 ---
 
@@ -194,7 +197,7 @@ export interface ChannelPort {
 ```
 
 **Justificativa:**
-- O núcleo só conhece `ChannelPort`. Trocar mock ↔ Cloud API é **injeção de dependência** — zero mudança no motor/casos de uso. Isso concretiza o "plugável" pedido.
+- O núcleo só conhece `ChannelPort`. Trocar mock por API Cloud é questão de **injeção de dependência** — zero mudança no motor/casos de uso.
 - `externalId` no contrato habilita **idempotência** (webhooks do WhatsApp podem repetir) desde o design.
 - `onMensagem` inverte o controle: o adaptador empurra eventos; o núcleo não faz *polling* nem conhece webhook/HTTP.
 
@@ -260,10 +263,10 @@ Considerações reais já previstas no design (mesmo sem implementar agora):
 
 | Item | Escolha | Justificativa |
 |---|---|---|
-| Linguagem | **TypeScript** | Tipagem estática pega erros de contrato (estados, DTOs) em tempo de compilação; essencial num domínio com invariantes. |
+| Linguagem | **TypeScript** | Tipagem estática pega erros de contrato (estados, DTOs) em tempo de compilação; essencial num domínio com Constantes. |
 | Framework HTTP | **Fastify** (ou Express) | Fastify: rápido, schema/validação nativa, ótimo p/ WebSocket. Express serve igual se preferir familiaridade. |
 | Tempo real | **WebSocket** (`ws`/`socket.io`) | Dashboard precisa de *push*; WS é bidirecional e eficiente. (SSE seria alternativa mais simples se só precisasse server→client.) |
-| Validação | **Zod** | Valida entrada de API/webhook e deriva tipos — uma fonte de verdade. |
+| Validação | **Zod** | Valida entrada de API/webhook e deriva tipos — uma fonte confiável. |
 | Persistência (fase 1) | **In-memory (repos)** | Foco no algoritmo; sobe sem infra. Portas de repositório permitem trocar por Postgres sem tocar no núcleo. |
 | Persistência (fase 2) | **PostgreSQL + Prisma** | Durabilidade e histórico p/ métricas; Prisma dá tipos e migrations. |
 | Concorrência | **async-mutex por time** | Correção sob concorrência (seção 3.2). |
@@ -271,7 +274,7 @@ Considerações reais já previstas no design (mesmo sem implementar agora):
 | Docs | **OpenAPI/Swagger** | Contrato explícito da REST. |
 | Container | **Docker Compose** | `up` sobe back + front (+ db na fase 2) num comando. |
 
-**Justificativa da stack Node:** casa com o front React (mesma linguagem/DTOs compartilháveis), tem excelente suporte a WebSocket (tempo real do Dashboard) e ecossistema maduro. O ponto de atenção (concorrência) é resolvido pelo mutex por time — coberto no design.
+**Justificativa da stack Node:** casa com o front React (mesma linguagem/DTOs compartilháveis), tem excelente suporte a WebSocket (tempo real do Dashboard) e ecossistema maduro. O ponto de atenção (concorrência) é resolvido pelo mutex por time — coberto no design. O foco do teste é para FullStack, portanto não foi separado em dois repositórios back e front, economizando tempo e até mesmo possíveis projetos intermediários como bibliotecas para os pacotes compartilhados (`shared`).
 
 ### 5.1 Contratos da API REST
 
@@ -348,7 +351,7 @@ Um **Event Bus** interno publica; o **WS Gateway** faz *broadcast* p/ os dashboa
 - **Logs estruturados** (pino) + **health check** (`/health`).
 - **README** com arquitetura, decisões e como rodar.
 
-**Justificativa:** demonstra maturidade de engenharia (não só "funciona"): reprodutibilidade (Docker), contrato (OpenAPI), confiabilidade (testes) e operação (logs/health) — o pacote esperado num desafio sênior.
+**Justificativa:** demonstra maturidade de engenharia (não só "funciona"): reprodutibilidade (Docker), contrato (OpenAPI), confiabilidade (testes) e operação (logs/health) — um pacote ao nível do desafio.
 
 ---
 

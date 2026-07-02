@@ -4,6 +4,7 @@ import type {
   MensagemDTO,
   MetricasDTO,
   MetricasTimeDTO,
+  SlaDTO,
   SnapshotPayload,
   StatusAtendimento,
   TimeDTO,
@@ -124,7 +125,7 @@ export class Consultas {
     return {
       times,
       atendimentosAtivos: atendimentos
-        .filter((a) => a.status !== 'FINALIZADO')
+        .filter((a) => a.status === 'AGUARDANDO' || a.status === 'EM_ATENDIMENTO')
         .sort((a, b) => a.criadoEm.getTime() - b.criadoEm.getTime())
         .map(atendimentoParaDTO),
     };
@@ -145,6 +146,7 @@ export class Consultas {
     const emAtendimento = atendimentos.filter((a) => a.status === 'EM_ATENDIMENTO');
     const aguardando = atendimentos.filter((a) => a.status === 'AGUARDANDO');
     const finalizados = atendimentos.filter((a) => a.status === 'FINALIZADO');
+    const abandonados = atendimentos.filter((a) => a.status === 'ABANDONADO');
 
     const esperas = atendimentos
       .map((a) => a.tempoEsperaSegundos())
@@ -152,6 +154,21 @@ export class Consultas {
     const atendimentosDur = finalizados
       .map((a) => a.tempoAtendimentoSegundos())
       .filter((v): v is number => v !== undefined);
+    const primeirasRespostas = atendimentos
+      .map((a) => a.tempoPrimeiraRespostaSegundos())
+      .filter((v): v is number => v !== undefined);
+    const iniciados = esperas.length;
+    const sla: SlaDTO = {
+      esperaP50Segundos: percentil(esperas, 50),
+      esperaP95Segundos: percentil(esperas, 95),
+      atendimentoP50Segundos: percentil(atendimentosDur, 50),
+      atendimentoP95Segundos: percentil(atendimentosDur, 95),
+      primeiraRespostaMedioSegundos: media(primeirasRespostas),
+      taxaAbandonoFila:
+        abandonados.length + iniciados === 0
+          ? 0
+          : Math.round((abandonados.length / (abandonados.length + iniciados)) * 100) / 100,
+    };
 
     const porTime: MetricasTimeDTO[] = times.map((time) => {
       const doTime = atendentes.filter((a) => a.timeId === time.id);
@@ -172,8 +189,10 @@ export class Consultas {
       emAtendimento: emAtendimento.length,
       aguardando: aguardando.length,
       finalizados: finalizados.length,
+      abandonados: abandonados.length,
       tempoMedioEsperaSegundos: media(esperas),
       tempoMedioAtendimentoSegundos: media(atendimentosDur),
+      sla,
       porTime,
     };
   }
@@ -189,4 +208,23 @@ function media(valores: number[]): number {
   if (valores.length === 0) return 0;
   const soma = valores.reduce((acc, v) => acc + v, 0);
   return Math.round((soma / valores.length) * 10) / 10;
+}
+
+/**
+ * Calcula o percentil de uma amostra por interpolação linear entre posições.
+ *
+ * @param valores - Amostra de valores numéricos.
+ * @param p - Percentil desejado (0–100).
+ * @returns O valor do percentil, arredondado a 1 casa, ou 0 para amostra vazia.
+ */
+function percentil(valores: number[], p: number): number {
+  if (valores.length === 0) return 0;
+  const ordenados = [...valores].sort((a, b) => a - b);
+  if (ordenados.length === 1) return Math.round(ordenados[0]! * 10) / 10;
+  const posicao = (p / 100) * (ordenados.length - 1);
+  const base = Math.floor(posicao);
+  const resto = posicao - base;
+  const inferior = ordenados[base]!;
+  const superior = ordenados[Math.min(base + 1, ordenados.length - 1)]!;
+  return Math.round((inferior + resto * (superior - inferior)) * 10) / 10;
 }

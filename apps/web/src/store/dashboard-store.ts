@@ -1,4 +1,4 @@
-import type { AtendimentoDTO, EventoTempoReal, TimeDTO } from '@flowpay/shared';
+import type { AtendimentoDTO, EventoTempoReal, MensagemDTO, TimeDTO } from '@flowpay/shared';
 import { create } from 'zustand';
 
 /** Ponto da série temporal de throughput. */
@@ -28,6 +28,8 @@ export interface DashboardState {
   times: TimeDTO[];
   /** Atendimentos indexados por id (ativos e finalizados recentes). */
   atendimentos: Record<string, AtendimentoDTO>;
+  /** Mensagens por atendimento, em ordem cronológica. */
+  mensagens: Record<string, MensagemDTO[]>;
   /** Série temporal para o gráfico de throughput. */
   historico: PontoHistorico[];
   /** Momento da última sincronização ou atualização recebida. */
@@ -46,6 +48,13 @@ export interface DashboardState {
    * @param atendimento - Atendimento a persistir no estado.
    */
   atualizarAtendimento: (atendimento: AtendimentoDTO) => void;
+  /**
+   * Substitui o histórico de mensagens de um atendimento (usado ao abrir o
+   * painel de conversa e carregar o detalhe via REST).
+   * @param atendimentoId - Id do atendimento.
+   * @param mensagens - Mensagens em ordem cronológica.
+   */
+  setMensagens: (atendimentoId: string, mensagens: MensagemDTO[]) => void;
   /**
    * Aplica um evento de tempo real ao estado.
    * @param evento - Evento recebido do WebSocket.
@@ -78,12 +87,34 @@ function inserirOuAtualizarAtendimento(
 }
 
 /**
+ * Anexa uma mensagem ao histórico do seu atendimento, evitando duplicatas por
+ * id (o mesmo evento pode chegar por REST e por WebSocket).
+ *
+ * @param estado - Estado atual.
+ * @param mensagem - Mensagem recebida.
+ * @returns O novo mapa de mensagens.
+ */
+function anexarMensagem(
+  estado: DashboardState,
+  mensagem: MensagemDTO,
+): Pick<DashboardState, 'mensagens'> {
+  const atuais = estado.mensagens[mensagem.atendimentoId] ?? [];
+  if (atuais.some((m) => m.id === mensagem.id)) {
+    return { mensagens: estado.mensagens };
+  }
+  return {
+    mensagens: { ...estado.mensagens, [mensagem.atendimentoId]: [...atuais, mensagem] },
+  };
+}
+
+/**
  * Hook de acesso ao store do dashboard.
  */
 export const useDashboardStore = create<DashboardState>((set) => ({
   conectado: false,
   times: [],
   atendimentos: {},
+  mensagens: {},
   historico: [],
   ultimaAtualizacao: null,
 
@@ -99,6 +130,9 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   atualizarAtendimento: (atendimento) =>
     set((estado) => ({ ...inserirOuAtualizarAtendimento(estado, atendimento), ultimaAtualizacao: new Date() })),
 
+  setMensagens: (atendimentoId, mensagens) =>
+    set((estado) => ({ mensagens: { ...estado.mensagens, [atendimentoId]: mensagens } })),
+
   aplicarEvento: (evento) =>
     set((estado) => {
       switch (evento.tipo) {
@@ -111,7 +145,11 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         case 'ATENDIMENTO_ALOCADO':
         case 'ATENDIMENTO_ENFILEIRADO':
         case 'ATENDIMENTO_FINALIZADO':
-          return inserirOuAtualizarAtendimento(estado, evento.payload);
+        case 'ATENDIMENTO_ABANDONADO':
+          return { ...inserirOuAtualizarAtendimento(estado, evento.payload), ultimaAtualizacao: new Date() };
+        case 'MENSAGEM_RECEBIDA':
+        case 'MENSAGEM_ENVIADA':
+          return { ...anexarMensagem(estado, evento.payload), ultimaAtualizacao: new Date() };
         default:
           return {};
       }

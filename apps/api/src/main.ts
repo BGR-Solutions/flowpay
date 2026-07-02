@@ -9,7 +9,7 @@ import { construirServidor } from './interface/http/server.js';
  */
 async function main(): Promise<void> {
   const config = carregarConfig();
-  const container = await criarContainer();
+  const container = await criarContainer(config);
   const app = await construirServidor(container, config);
 
   if (config.simuladorHabilitado) {

@@ -1,4 +1,6 @@
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import websocket from '@fastify/websocket';
@@ -28,6 +30,24 @@ export async function construirServidor(
   app.setErrorHandler(tratarErro);
 
   await app.register(cors, { origin: config.corsOrigin });
+
+  // Cabeçalhos de segurança. CSP é desabilitada para não quebrar o Swagger UI
+  // (que injeta estilos/scripts inline em `/docs`).
+  await app.register(helmet, { contentSecurityPolicy: false });
+
+  // Limitação de taxa: protege contra abuso/rajadas. O handler devolve o erro
+  // no mesmo formato Problem Details (RFC 7807) do restante da API.
+  await app.register(rateLimit, {
+    max: config.rateLimitMax,
+    timeWindow: config.rateLimitJanelaMs,
+    errorResponseBuilder: (_request, context) => ({
+      type: 'https://flowpay.dev/problems/limite-de-taxa',
+      title: 'Limite de requisições excedido.',
+      status: 429,
+      detail: `Máximo de ${context.max} requisições por ${context.after}.`,
+      code: 'LIMITE_DE_TAXA',
+    }),
+  });
 
   await app.register(swagger, {
     openapi: {

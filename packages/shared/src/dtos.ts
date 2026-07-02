@@ -48,6 +48,20 @@ export interface AtendimentoDTO {
   iniciadoEm?: string;
   /** Momento de finalização (ISO 8601). */
   finalizadoEm?: string;
+  /** Momento de abandono da fila (ISO 8601), quando aplicável. */
+  abandonadoEm?: string;
+  /** Momento da primeira resposta do atendente (ISO 8601), quando houve. */
+  primeiraRespostaEm?: string;
+}
+
+/**
+ * Detalhe de um atendimento acompanhado de seu histórico de mensagens.
+ */
+export interface AtendimentoDetalheDTO {
+  /** Dados do atendimento. */
+  atendimento: AtendimentoDTO;
+  /** Mensagens trocadas, em ordem cronológica. */
+  mensagens: MensagemDTO[];
 }
 
 /**
@@ -94,12 +108,34 @@ export interface MetricasDTO {
   aguardando: number;
   /** Total de atendimentos já finalizados. */
   finalizados: number;
+  /** Total de atendimentos abandonados na fila. */
+  abandonados: number;
   /** Tempo médio de espera (segundos) dos atendimentos já iniciados. */
   tempoMedioEsperaSegundos: number;
   /** Tempo médio de atendimento (segundos) dos já finalizados. */
   tempoMedioAtendimentoSegundos: number;
+  /** Indicadores de nível de serviço (percentis e FRT). */
+  sla: SlaDTO;
   /** Métricas quebradas por time. */
   porTime: MetricasTimeDTO[];
+}
+
+/**
+ * Indicadores de nível de serviço (SLA) — o que gestores usam para decisão.
+ */
+export interface SlaDTO {
+  /** Percentil 50 (mediana) do tempo de espera, em segundos. */
+  esperaP50Segundos: number;
+  /** Percentil 95 do tempo de espera, em segundos. */
+  esperaP95Segundos: number;
+  /** Percentil 50 (mediana) do tempo de atendimento, em segundos. */
+  atendimentoP50Segundos: number;
+  /** Percentil 95 do tempo de atendimento, em segundos. */
+  atendimentoP95Segundos: number;
+  /** Tempo médio até a primeira resposta do atendente (FRT), em segundos. */
+  primeiraRespostaMedioSegundos: number;
+  /** Taxa de abandono da fila (0–1): abandonados / (abandonados + iniciados). */
+  taxaAbandonoFila: number;
 }
 
 /**

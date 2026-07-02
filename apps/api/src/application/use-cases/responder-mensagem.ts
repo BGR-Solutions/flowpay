@@ -52,24 +52,29 @@ export class ResponderMensagem {
     if (!atendimento) {
       throw new NaoEncontradoError('Atendimento', atendimentoId);
     }
-    if (atendimento.status === 'FINALIZADO') {
+    if (atendimento.status === 'FINALIZADO' || atendimento.status === 'ABANDONADO') {
       throw new RegraNegocioError(
-        `Não é possível responder a um atendimento finalizado (id ${atendimentoId}).`,
-        'ATENDIMENTO_FINALIZADO',
+        `Não é possível responder a um atendimento ${atendimento.status.toLowerCase()} (id ${atendimentoId}).`,
+        'ATENDIMENTO_ENCERRADO',
       );
     }
 
     const { externalId } = await this.deps.canal.enviarMensagem(atendimento.clienteId, texto);
 
+    const agora = this.deps.clock.now();
     const mensagem = new Mensagem(
       this.deps.ids.next(),
       atendimento.id,
       'OUT',
       texto,
-      this.deps.clock.now(),
+      agora,
       externalId,
     );
     await this.deps.mensagens.salvar(mensagem);
+
+    atendimento.registrarPrimeiraResposta(agora);
+    await this.deps.atendimentos.salvar(atendimento);
+
     this.deps.eventos.publicar({ tipo: 'MENSAGEM_ENVIADA', mensagem });
 
     return mensagem;

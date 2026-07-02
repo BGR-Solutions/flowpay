@@ -23,6 +23,8 @@ export function atendimentoParaDTO(a: Atendimento): AtendimentoDTO {
     criadoEm: a.criadoEm.toISOString(),
     iniciadoEm: a.iniciadoEm?.toISOString(),
     finalizadoEm: a.finalizadoEm?.toISOString(),
+    abandonadoEm: a.abandonadoEm?.toISOString(),
+    primeiraRespostaEm: a.primeiraRespostaEm?.toISOString(),
   };
 }
 

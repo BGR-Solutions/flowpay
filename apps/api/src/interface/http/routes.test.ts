@@ -85,6 +85,64 @@ describe('API HTTP', () => {
     expect(metricas.porTime).toHaveLength(3);
   });
 
+  it('GET /dashboard/metricas expõe indicadores de SLA', async () => {
+    const res = await app.inject({ method: 'GET', url: '/dashboard/metricas' });
+    const metricas = res.json<MetricasDTO>();
+    expect(metricas.sla).toBeDefined();
+    expect(metricas.sla).toHaveProperty('esperaP95Segundos');
+    expect(metricas.sla).toHaveProperty('taxaAbandonoFila');
+    expect(metricas).toHaveProperty('abandonados');
+  });
+
+  it('PATCH /atendimentos/:id/abandonar marca a fila como abandonada e conta churn', async () => {
+    // Lota os atendentes do time Outros (2 x capacidade 3 = 6) e enfileira os demais.
+    let aguardandoId = '';
+    for (let i = 0; i < 8; i += 1) {
+      const criado = await app.inject({
+        method: 'POST',
+        url: '/atendimentos',
+        payload: { clienteId: `fila-${i}`, assunto: 'OUTRO' },
+      });
+      const dto = criado.json<AtendimentoDTO>();
+      if (dto.status === 'AGUARDANDO') aguardandoId = dto.id;
+    }
+    expect(aguardandoId).not.toBe('');
+
+    const res = await app.inject({ method: 'PATCH', url: `/atendimentos/${aguardandoId}/abandonar` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<AtendimentoDTO>().status).toBe('ABANDONADO');
+
+    const metricas = await app.inject({ method: 'GET', url: '/dashboard/metricas' });
+    expect(metricas.json<MetricasDTO>().abandonados).toBe(1);
+  });
+
+  it('erros seguem o formato Problem Details (RFC 7807)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/atendimentos/nao-existe' });
+    expect(res.statusCode).toBe(404);
+    expect(res.headers['content-type']).toContain('application/problem+json');
+    const corpo = res.json();
+    expect(corpo).toMatchObject({ type: expect.any(String), title: expect.any(String), status: 404 });
+  });
+
+  it('Idempotency-Key evita criar atendimentos duplicados', async () => {
+    const opcoes = {
+      method: 'POST' as const,
+      url: '/atendimentos',
+      headers: { 'idempotency-key': 'chave-abc' },
+      payload: { clienteId: 'cliente-idem', assunto: 'OUTRO' },
+    };
+    const primeira = await app.inject(opcoes);
+    const segunda = await app.inject(opcoes);
+
+    expect(primeira.statusCode).toBe(201);
+    expect(segunda.statusCode).toBe(201);
+    expect(segunda.json<AtendimentoDTO>().id).toBe(primeira.json<AtendimentoDTO>().id);
+
+    const lista = await app.inject({ method: 'GET', url: '/atendimentos' });
+    const doCliente = lista.json<AtendimentoDTO[]>().filter((a) => a.clienteId === 'cliente-idem');
+    expect(doCliente).toHaveLength(1);
+  });
+
   it('POST /simular/whatsapp/mensagem cria atendimento via canal mock', async () => {
     const res = await app.inject({
       method: 'POST',

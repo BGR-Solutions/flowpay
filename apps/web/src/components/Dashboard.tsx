@@ -1,11 +1,14 @@
-import { useMemo } from 'react';
+import type { MetricasDTO } from '@flowpay/shared';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client.js';
 import { useRealtime } from '../hooks/use-realtime.js';
 import { useDashboardStore } from '../store/dashboard-store.js';
 import { calcularKpis, calcularMetricasPorTime } from '../store/selectors.js';
 import { ConnectionBadge } from './ConnectionBadge.js';
+import { ConversaPanel } from './ConversaPanel.js';
 import { KpiCard } from './KpiCard.js';
 import { SimularForm } from './SimularForm.js';
+import { SlaPanel } from './SlaPanel.js';
 import { ThroughputChart } from './ThroughputChart.js';
 import { TimeCard } from './TimeCard.js';
 
@@ -24,10 +27,50 @@ export function Dashboard(): JSX.Element {
   const conectado = useDashboardStore((s) => s.conectado);
   const times = useDashboardStore((s) => s.times);
   const atendimentos = useDashboardStore((s) => s.atendimentos);
+  const mensagens = useDashboardStore((s) => s.mensagens);
   const historico = useDashboardStore((s) => s.historico);
   const atualizarAtendimento = useDashboardStore((s) => s.atualizarAtendimento);
   const setTimes = useDashboardStore((s) => s.setTimes);
   const setAtendimentos = useDashboardStore((s) => s.setAtendimentos);
+  const setMensagens = useDashboardStore((s) => s.setMensagens);
+
+  const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
+  const [metricas, setMetricas] = useState<MetricasDTO | null>(null);
+
+  // As métricas de SLA são agregadas no back-end (percentis, FRT, churn), por
+  // isso são buscadas por polling em vez de derivadas do estado de eventos.
+  useEffect(() => {
+    let ativo = true;
+    const carregar = () => {
+      void api
+        .metricas()
+        .then((m) => {
+          if (ativo) setMetricas(m);
+        })
+        .catch(() => undefined);
+    };
+    carregar();
+    const intervalo = setInterval(carregar, 5000);
+    return () => {
+      ativo = false;
+      clearInterval(intervalo);
+    };
+  }, []);
+
+  const abrirConversa = (id: string) => {
+    setSelecionadoId(id);
+    void (async () => {
+      try {
+        const detalhe = await api.detalharAtendimento(id);
+        setMensagens(id, detalhe.mensagens);
+        atualizarAtendimento(detalhe.atendimento);
+      } catch {
+        // Mantém o painel aberto; mensagens chegam via tempo real.
+      }
+    })();
+  };
+
+  const selecionado = selecionadoId ? (atendimentos[selecionadoId] ?? null) : null;
 
   const kpis = useMemo(() => calcularKpis(atendimentos), [atendimentos]);
   const metricasPorTime = useMemo(
@@ -80,6 +123,12 @@ export function Dashboard(): JSX.Element {
         />
       </div>
 
+      {metricas ? (
+        <div className="mb-6">
+          <SlaPanel sla={metricas.sla} abandonados={metricas.abandonados} />
+        </div>
+      ) : null}
+
       <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {metricasPorTime.map((metrica) => (
           <TimeCard key={metrica.time.id} metrica={metrica} />
@@ -99,9 +148,16 @@ export function Dashboard(): JSX.Element {
               ativos.map((a) => (
                 <li
                   key={a.id}
-                  className="flex items-center justify-between rounded-md bg-slate-800/60 px-3 py-2 text-sm"
+                  className="flex items-center justify-between gap-2 rounded-md bg-slate-800/60 px-3 py-2 text-sm"
                 >
-                  <span className="truncate text-slate-300">{a.clienteNome ?? a.clienteId}</span>
+                  <button
+                    type="button"
+                    onClick={() => abrirConversa(a.id)}
+                    className="min-w-0 flex-1 truncate text-left text-slate-300 transition hover:text-indigo-300"
+                    title="Abrir conversa"
+                  >
+                    {a.clienteNome ?? a.clienteId}
+                  </button>
                   <button
                     type="button"
                     onClick={() =>
@@ -130,6 +186,33 @@ export function Dashboard(): JSX.Element {
           </ul>
         </div>
       </div>
+
+      {selecionado ? (
+        <div
+          className="fixed inset-0 z-20 flex items-stretch justify-end bg-black/40"
+          onClick={() => setSelecionadoId(null)}
+        >
+          <div
+            className="h-full w-full max-w-md p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ConversaPanel
+              atendimento={selecionado}
+              mensagens={mensagens[selecionado.id] ?? []}
+              onFechar={() => setSelecionadoId(null)}
+              onResponder={async (texto) => {
+                try {
+                  await api.responder(selecionado.id, texto);
+                  const detalhe = await api.detalharAtendimento(selecionado.id);
+                  setMensagens(selecionado.id, detalhe.mensagens);
+                } catch {
+                  // Erros de envio são refletidos pela ausência da mensagem no painel.
+                }
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

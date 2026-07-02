@@ -1,5 +1,6 @@
 import type {
   Assunto,
+  AtendimentoDetalheDTO,
   AtendimentoDTO,
   MensagemDTO,
   MetricasDTO,
@@ -33,7 +34,8 @@ async function requisitar<T>(caminho: string, init?: RequestInit): Promise<T> {
   });
   if (!resposta.ok) {
     const corpo = await resposta.json().catch(() => ({}));
-    throw new Error(corpo.message ?? `Erro ${resposta.status}`);
+    // Suporta o formato Problem Details (RFC 7807) e o formato legado.
+    throw new Error(corpo.detail ?? corpo.title ?? corpo.message ?? `Erro ${resposta.status}`);
   }
   return resposta.json() as Promise<T>;
 }
@@ -47,6 +49,15 @@ export const api = {
 
   /** @returns Lista de atendimentos ativos e finalizados. */
   listarAtendimentos: () => requisitar<AtendimentoDTO[]>('/atendimentos'),
+
+  /**
+   * Detalha um atendimento e seu histórico de mensagens.
+   *
+   * @param id - Id do atendimento.
+   * @returns O atendimento e suas mensagens.
+   */
+  detalharAtendimento: (id: string) =>
+    requisitar<AtendimentoDetalheDTO>(`/atendimentos/${id}`),
 
   /** @returns Métricas agregadas. */
   metricas: () => requisitar<MetricasDTO>('/dashboard/metricas'),
@@ -71,6 +82,15 @@ export const api = {
    */
   finalizar: (id: string) =>
     requisitar<AtendimentoDTO>(`/atendimentos/${id}/finalizar`, { method: 'PATCH' }),
+
+  /**
+   * Marca como abandonado um atendimento que aguarda na fila.
+   *
+   * @param id - Id do atendimento.
+   * @returns O atendimento abandonado.
+   */
+  abandonar: (id: string) =>
+    requisitar<AtendimentoDTO>(`/atendimentos/${id}/abandonar`, { method: 'PATCH' }),
 
   /**
    * Responde a um atendimento (mensagem de saída).

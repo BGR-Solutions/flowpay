@@ -100,12 +100,31 @@ Documentação interativa (OpenAPI/Swagger) em **`/docs`**.
 | `GET` | `/atendimentos` | Lista atendimentos (filtros `status`, `timeId`) |
 | `GET` | `/atendimentos/:id` | Detalhe + mensagens |
 | `PATCH` | `/atendimentos/:id/finalizar` | Finaliza e libera a vaga |
+| `PATCH` | `/atendimentos/:id/abandonar` | Marca como abandonado quem aguarda na fila |
 | `POST` | `/atendimentos/:id/mensagens` | Atendente responde ao cliente |
 | `GET` | `/times` | Times com atendentes e filas |
 | `GET` | `/atendentes` | Atendentes e carga atual |
-| `GET` | `/dashboard/metricas` | Métricas agregadas |
+| `GET` | `/dashboard/metricas` | Métricas agregadas (inclui SLA: p50/p95, FRT, churn) |
 | `POST` | `/simular/whatsapp/mensagem` | Simula mensagem recebida (canal mock) |
 | `GET` | `/health` | Health check |
+
+`POST /atendimentos` aceita o cabeçalho **`Idempotency-Key`**: reenvios com a
+mesma chave devolvem o atendimento original, sem criar duplicatas. Erros seguem
+o formato **Problem Details (RFC 7807)** (`application/problem+json`). A API
+aplica `helmet` (cabeçalhos de segurança) e `rate-limit`.
+
+### Configuração (variáveis de ambiente)
+
+| Variável | Default | Descrição |
+|---|---|---|
+| `PORT` | `3333` | Porta HTTP |
+| `CORS_ORIGIN` | `*` | Origem(ns) permitida(s) |
+| `LOG_LEVEL` | `info` | Nível de log |
+| `SIMULADOR` | `false` | Habilita o simulador de tráfego |
+| `RATE_LIMIT_MAX` | `300` | Requisições por janela |
+| `RATE_LIMIT_JANELA_MS` | `60000` | Janela do rate limit (ms) |
+| `PERSISTENCIA` | `memory` | `memory` ou `file` (persiste em JSON) |
+| `PERSISTENCIA_DIR` | `.data` | Diretório usado quando `PERSISTENCIA=file` |
 
 Exemplo:
 
@@ -117,7 +136,7 @@ curl -X POST localhost:3333/atendimentos \
 
 ## Tempo real (WebSocket)
 
-Conecte-se a `ws://localhost:3333/ws`. Ao conectar, o servidor envia um evento `SNAPSHOT` com o estado completo; em seguida, propaga eventos incrementais (`ATENDIMENTO_CRIADO`, `ATENDIMENTO_ALOCADO`, `ATENDIMENTO_ENFILEIRADO`, `ATENDIMENTO_FINALIZADO`, `MENSAGEM_*`).
+Conecte-se a `ws://localhost:3333/ws`. Ao conectar, o servidor envia um evento `SNAPSHOT` com o estado completo; em seguida, propaga eventos incrementais (`ATENDIMENTO_CRIADO`, `ATENDIMENTO_ALOCADO`, `ATENDIMENTO_ENFILEIRADO`, `ATENDIMENTO_FINALIZADO`, `ATENDIMENTO_ABANDONADO`, `MENSAGEM_*`).
 
 ## Testes, lint e typecheck
 

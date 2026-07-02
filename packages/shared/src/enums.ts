@@ -30,9 +30,15 @@ export type Assunto = (typeof ASSUNTOS)[number];
  * Estados do ciclo de vida de um atendimento.
  *
  * Transições válidas:
- * `AGUARDANDO -> EM_ATENDIMENTO -> FINALIZADO`.
+ * - `AGUARDANDO -> EM_ATENDIMENTO -> FINALIZADO`
+ * - `AGUARDANDO -> ABANDONADO` (cliente desiste enquanto aguarda na fila).
  */
-export const STATUS_ATENDIMENTO = ['AGUARDANDO', 'EM_ATENDIMENTO', 'FINALIZADO'] as const;
+export const STATUS_ATENDIMENTO = [
+  'AGUARDANDO',
+  'EM_ATENDIMENTO',
+  'FINALIZADO',
+  'ABANDONADO',
+] as const;
 
 /**
  * União literal derivada de {@link STATUS_ATENDIMENTO}.

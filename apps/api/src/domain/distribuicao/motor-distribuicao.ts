@@ -161,6 +161,36 @@ export class MotorDistribuicao {
   }
 
   /**
+   * Marca como abandonado um atendimento que aguarda na fila (cliente desistiu)
+   * e o remove da fila do time, de forma atômica.
+   *
+   * @param atendimentoId - Id do atendimento a abandonar.
+   * @returns O atendimento abandonado.
+   * @throws {@link NaoEncontradoError} se o atendimento não existe.
+   * @throws {@link RegraNegocioError} se o atendimento não está aguardando.
+   */
+  async abandonarAtendimento(atendimentoId: string): Promise<Atendimento> {
+    const atendimento = await this.deps.atendimentos.buscarPorId(atendimentoId);
+    if (!atendimento) {
+      throw new NaoEncontradoError('Atendimento', atendimentoId);
+    }
+
+    return this.executarComLockDoTime(atendimento.timeId, async () => {
+      atendimento.abandonar(this.deps.clock.now());
+      await this.deps.atendimentos.salvar(atendimento);
+
+      const time = await this.deps.times.buscarPorId(atendimento.timeId);
+      if (time) {
+        time.removerDaFila(atendimento.id);
+        await this.deps.times.salvar(time);
+      }
+
+      this.deps.eventos.publicar({ tipo: 'ATENDIMENTO_ABANDONADO', atendimento });
+      return atendimento;
+    });
+  }
+
+  /**
    * Resolve o time responsável por um assunto.
    *
    * @param assunto - Assunto da solicitação.

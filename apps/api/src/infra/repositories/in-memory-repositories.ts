@@ -85,7 +85,11 @@ export class InMemoryAtendimentoRepository implements AtendimentoRepository {
   /** @inheritDoc */
   async buscarAtivoPorCliente(clienteId: string): Promise<Atendimento | undefined> {
     for (const atendimento of this.dados.values()) {
-      if (atendimento.clienteId === clienteId && atendimento.status !== 'FINALIZADO') {
+      if (
+        atendimento.clienteId === clienteId &&
+        atendimento.status !== 'FINALIZADO' &&
+        atendimento.status !== 'ABANDONADO'
+      ) {
         return atendimento;
       }
     }

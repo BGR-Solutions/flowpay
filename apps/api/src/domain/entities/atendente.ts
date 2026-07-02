@@ -4,6 +4,23 @@ import { RegraNegocioError } from '../errors.js';
 export const CAPACIDADE_MAXIMA_PADRAO = 3;
 
 /**
+ * Forma serializável de um {@link Atendente}, usada por adaptadores de
+ * persistência.
+ */
+export interface AtendenteSnapshot {
+  /** Identificador único. */
+  id: string;
+  /** Nome de exibição. */
+  nome: string;
+  /** Time ao qual pertence. */
+  timeId: string;
+  /** Capacidade máxima. */
+  capacidadeMax: number;
+  /** Ids dos atendimentos ativos. */
+  ativos: string[];
+}
+
+/**
  * Atendente é o recurso que consome atendimentos. A invariante central —
  * nunca ultrapassar {@link Atendente.capacidadeMax} atendimentos simultâneos —
  * é garantida por esta entidade.
@@ -71,5 +88,34 @@ export class Atendente {
    */
   liberar(atendimentoId: string): boolean {
     return this.ativos.delete(atendimentoId);
+  }
+
+  /**
+   * @returns Representação serializável deste atendente.
+   */
+  paraSnapshot(): AtendenteSnapshot {
+    return {
+      id: this.id,
+      nome: this.nome,
+      timeId: this.timeId,
+      capacidadeMax: this.capacidadeMax,
+      ativos: this.atendimentosAtivos,
+    };
+  }
+
+  /**
+   * Reconstrói um {@link Atendente} a partir de sua forma serializada,
+   * restaurando os atendimentos ativos sem passar pela validação de
+   * capacidade (estado já consistente no momento da persistência).
+   *
+   * @param s - Snapshot previamente persistido.
+   * @returns O atendente reidratado.
+   */
+  static restaurar(s: AtendenteSnapshot): Atendente {
+    const atendente = new Atendente(s.id, s.nome, s.timeId, s.capacidadeMax);
+    for (const id of s.ativos) {
+      atendente.ativos.add(id);
+    }
+    return atendente;
   }
 }

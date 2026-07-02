@@ -1,4 +1,4 @@
-import type { AtendenteDTO, AtendimentoDTO, TimeDTO } from '@flowpay/shared';
+import type { AtendenteDTO, AtendimentoDTO, MensagemDTO, TimeDTO } from '@flowpay/shared';
 import type { TimeMetrica } from '../store/selectors.js';
 
 /**
@@ -35,6 +35,23 @@ export function atendimentoFixture(over: Partial<AtendimentoDTO> = {}): Atendime
     timeId: 'time-1',
     status: 'AGUARDANDO',
     criadoEm: new Date(Date.now() - 90_000).toISOString(),
+    ...over,
+  };
+}
+
+/**
+ * Cria uma {@link MensagemDTO} de exemplo.
+ *
+ * @param over - Sobrescritas parciais.
+ * @returns Uma mensagem.
+ */
+export function mensagemFixture(over: Partial<MensagemDTO> = {}): MensagemDTO {
+  return {
+    id: 'msg-1',
+    atendimentoId: 'atd-1',
+    direcao: 'IN',
+    texto: 'Olá, estou com um problema no meu cartão.',
+    criadoEm: new Date(Date.now() - 60_000).toISOString(),
     ...over,
   };
 }

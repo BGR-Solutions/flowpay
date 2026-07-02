@@ -12,6 +12,7 @@ export type DomainEvent =
   | { tipo: 'ATENDIMENTO_ALOCADO'; atendimento: Atendimento }
   | { tipo: 'ATENDIMENTO_ENFILEIRADO'; atendimento: Atendimento }
   | { tipo: 'ATENDIMENTO_FINALIZADO'; atendimento: Atendimento }
+  | { tipo: 'ATENDIMENTO_ABANDONADO'; atendimento: Atendimento }
   | { tipo: 'MENSAGEM_RECEBIDA'; mensagem: Mensagem }
   | { tipo: 'MENSAGEM_ENVIADA'; mensagem: Mensagem };
 

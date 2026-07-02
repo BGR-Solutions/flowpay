@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { atendimentoParaDTO, mensagemParaDTO } from '../../application/mappers.js';
 import type { Container } from '../../container.js';
+import { IdempotencyStore } from './idempotency.js';
 import {
   criarAtendimentoSchema,
   enviarMensagemSchema,
@@ -20,6 +21,8 @@ import {
  * @param container - Dependências resolvidas da aplicação.
  */
 export async function registrarRotas(app: FastifyInstance, container: Container): Promise<void> {
+  const idempotencia = new IdempotencyStore();
+
   app.get(
     '/health',
     { schema: { tags: ['sistema'], summary: 'Verifica a saúde do serviço.' } },
@@ -35,6 +38,14 @@ export async function registrarRotas(app: FastifyInstance, container: Container)
       },
     },
     async (request, reply) => {
+      const chave = request.headers['idempotency-key'];
+      if (typeof chave === 'string' && chave.length > 0) {
+        const memorizada = idempotencia.obter(chave);
+        if (memorizada) {
+          return reply.status(memorizada.status).send(memorizada.corpo);
+        }
+      }
+
       const body = criarAtendimentoSchema.parse(request.body);
       const atendimento = await container.motor.criarAtendimento({
         clienteId: body.clienteId,
@@ -42,7 +53,12 @@ export async function registrarRotas(app: FastifyInstance, container: Container)
         assunto: body.assunto,
         canal: body.canal ?? 'API',
       });
-      return reply.status(201).send(atendimentoParaDTO(atendimento));
+      const corpo = atendimentoParaDTO(atendimento);
+
+      if (typeof chave === 'string' && chave.length > 0) {
+        idempotencia.registrar(chave, { status: 201, corpo });
+      }
+      return reply.status(201).send(corpo);
     },
   );
 
@@ -70,6 +86,21 @@ export async function registrarRotas(app: FastifyInstance, container: Container)
     async (request) => {
       const { id } = idParamSchema.parse(request.params);
       const atendimento = await container.motor.finalizarAtendimento(id);
+      return atendimentoParaDTO(atendimento);
+    },
+  );
+
+  app.patch(
+    '/atendimentos/:id/abandonar',
+    {
+      schema: {
+        tags: ['atendimentos'],
+        summary: 'Marca como abandonado um atendimento que aguarda na fila.',
+      },
+    },
+    async (request) => {
+      const { id } = idParamSchema.parse(request.params);
+      const atendimento = await container.motor.abandonarAtendimento(id);
       return atendimentoParaDTO(atendimento);
     },
   );
